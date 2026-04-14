@@ -297,14 +297,45 @@ with tab2:
     col_tools, col_canvas = st.columns([1, 2])
 
     with col_tools:
-        # ADD NODE
-        with st.expander("➕ Agregar nodo", expanded=True):
+        # ADD NODE + RELATIONS
+        with st.expander("➕ Agregar nodo + relaciones", expanded=True):
             node_id = st.text_input("Nombre del nodo", key="add_node_id",
                                     placeholder="ej: auth-service")
             node_tipo = st.selectbox("Tipo", list(COLORES_TIPO.keys()), key="add_node_tipo")
             node_props_str = st.text_input("Propiedades (key:val, key:val)",
                                            key="add_node_props", placeholder="version:v1.0, team:backend")
-            if st.button("Agregar nodo", type="primary", use_container_width=True, key="btn_add_node"):
+
+            # Dynamic relation slots
+            existing_ids = [n["id"] for n in st.session_state.graph_nodes]
+            if "n_rel_slots" not in st.session_state:
+                st.session_state.n_rel_slots = 1
+
+            if existing_ids:
+                st.markdown('<span style="color:#94a3b8;font-size:.82rem">Relaciones al crear (opcional):</span>', unsafe_allow_html=True)
+                new_rels = []
+                for i in range(st.session_state.n_rel_slots):
+                    rc1, rc2, rc3 = st.columns([2, 3, 2])
+                    direction = rc1.selectbox("Dir", ["→ sale de","← entra a"], key=f"rel_dir_{i}",
+                                              label_visibility="collapsed")
+                    rel_type = rc2.text_input("Relacion", key=f"rel_type_{i}",
+                                              placeholder="DEPENDE_DE", label_visibility="collapsed")
+                    target = rc3.selectbox("Nodo", existing_ids, key=f"rel_target_{i}",
+                                           label_visibility="collapsed")
+                    if rel_type:
+                        new_rels.append({"dir": direction, "rel": rel_type, "target": target})
+
+                bc1, bc2 = st.columns(2)
+                if bc1.button("+ Otra relacion", use_container_width=True, key="btn_more_rels"):
+                    st.session_state.n_rel_slots = min(st.session_state.n_rel_slots + 1, 6)
+                    st.rerun()
+                if bc2.button("- Quitar ultima", use_container_width=True, key="btn_less_rels",
+                              disabled=st.session_state.n_rel_slots <= 1):
+                    st.session_state.n_rel_slots = max(st.session_state.n_rel_slots - 1, 1)
+                    st.rerun()
+            else:
+                new_rels = []
+
+            if st.button("Crear nodo", type="primary", use_container_width=True, key="btn_add_node"):
                 if node_id:
                     props = {}
                     if node_props_str:
@@ -312,15 +343,20 @@ with tab2:
                             if ":" in p:
                                 k,v = p.split(":",1)
                                 props[k.strip()] = v.strip()
-                    existing = [n["id"] for n in st.session_state.graph_nodes]
-                    if node_id not in existing:
+                    if node_id not in existing_ids:
                         st.session_state.graph_nodes.append({"id":node_id,"tipo":node_tipo,"props":props})
+                        for r in new_rels:
+                            if r["dir"].startswith("→"):
+                                st.session_state.graph_edges.append({"src":node_id,"dst":r["target"],"rel":r["rel"]})
+                            else:
+                                st.session_state.graph_edges.append({"src":r["target"],"dst":node_id,"rel":r["rel"]})
+                        st.session_state.n_rel_slots = 1
                         st.rerun()
                     else:
                         st.warning("Ya existe un nodo con ese nombre")
 
-        # ADD EDGE
-        with st.expander("🔗 Agregar relacion"):
+        # ADD EDGE (standalone)
+        with st.expander("🔗 Agregar relacion entre nodos existentes"):
             node_ids = [n["id"] for n in st.session_state.graph_nodes]
             if len(node_ids) >= 2:
                 e_src = st.selectbox("Origen", node_ids, key="e_src")
